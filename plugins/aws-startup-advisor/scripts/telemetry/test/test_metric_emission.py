@@ -47,7 +47,7 @@ SKILLS_DIR = PLUGIN_ROOT / "skills"
 NOT_A_SKILL = {"shared"}
 
 # Skills PluginSkillId has no member for yet; reporting one would 400 the whole request.
-NOT_YET_MODELLED = {"bedrock-migration-assessment", "deploy-from-github"}
+NOT_YET_MODELLED = {"bedrock-migration-assessment", "deploy-from-github", "observe-on-aws"}
 
 
 def accept(home):

@@ -1,8 +1,8 @@
 {
   "name": "aws-startup-advisor",
   "displayName": "AWS Startup Advisor",
-  "description": "AWS Startup Advisor puts an AWS Startups Solutions Architect in your coding assistant. It recommends the smallest architecture that fits your stage, credits, and team, then can scaffold it, migrate you from Azure, Google Cloud, or Heroku, move your model calls to Amazon Bedrock, deploy from GitHub Actions to AWS with staging and production stages, and investigate production incidents. It also answers your AWS Activate credits eligibility questions and finds startup offers you can use.",
-  "version": "2.1.0",
+  "description": "AWS Startup Advisor puts an AWS Startups Solutions Architect in your coding assistant. It recommends the smallest architecture that fits your stage, credits, and team, then can scaffold it, migrate you from Azure, Google Cloud, or Heroku, move your model calls to Amazon Bedrock, deploy from GitHub Actions to AWS with staging and production stages, set up OpenTelemetry observability with CloudWatch and CloudWatch Omni, and investigate production incidents. It also answers your AWS Activate credits eligibility questions and finds startup offers you can use.",
+  "version": "2.2.0",
   "author": {
     "name": "Amazon Web Services"
   },
@@ -94,7 +94,16 @@
     "continuous-deployment",
     "oidc",
     "multi-region",
-    "deploy-from-github"
+    "deploy-from-github",
+    "observability",
+    "opentelemetry",
+    "otel",
+    "adot",
+    "cloudwatch",
+    "cloudwatch-omni",
+    "alarms",
+    "dashboards",
+    "observe-on-aws"
   ],
   "skills": "./skills/",
   "commands": "./commands/",

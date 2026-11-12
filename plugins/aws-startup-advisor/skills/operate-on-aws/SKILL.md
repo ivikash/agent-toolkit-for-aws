@@ -597,5 +597,6 @@ and remind them how to pause.
   or `llm-to-bedrock`
 - **Not** for scaffolding a new project → `start-building-for-startups`
 - **Not** for general Activate or credits questions → `knowledge-base-for-startups`
+- **Not** for setting up the alarms, dashboards and instrumentation in the first place → `observe-on-aws`
 
 Release management is in preview. Say so when recommending it; capabilities and pricing may change.

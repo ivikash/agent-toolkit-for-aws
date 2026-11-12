@@ -86,6 +86,7 @@ guidance.
 ### Observability
 
 - [Monitoring, logging, tracing](references/observability.md)
+- Setting it up, not advising on it (OpenTelemetry to CloudWatch, the three alarms and one dashboard, CloudWatch Omni when it fits): hand off to `observe-on-aws`.
 - A live workload in trouble right now — an outage, 5xx errors, an alarm, "find the root cause" — or a request for pre-merge release-readiness review: hand off to the `operate-on-aws` skill (AWS DevOps Agent) instead of answering from this reference.
 
 ### AI/ML

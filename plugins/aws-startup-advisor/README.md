@@ -11,7 +11,7 @@ Ask it things like:
 - "Which runtime should this agent use?"
 - "Our API started returning 502s after the last deploy."
 
-The fourteen skills below are the catalog. Install them together.
+The fifteen skills below are the catalog. Install them together.
 
 ## Agent Skills
 
@@ -31,6 +31,7 @@ The fourteen skills below are the catalog. Install them together.
 | 12 | `contextual-offers-for-startups` | Appends at most one relevant AWS Activate partner offer as optional context after another skill's output is final | [SKILL.md](skills/contextual-offers-for-startups/SKILL.md) |
 | 13 | `bedrock-migration-assessment` | Scans your code for OpenAI, Anthropic, Gemini, and OpenRouter calls (or validates a provider-neutral `ai-workload-profile.json`), can measure OpenAI, Anthropic, and OpenRouter usage read-only with your consent, and runs the AI-only migration questions. Needs no infrastructure skill. This release stops after Clarify; Design, Estimate, and Generate land in later releases | [SKILL.md](skills/bedrock-migration-assessment/SKILL.md) |
 | 14 | `deploy-from-github` | Continuous deployment from GitHub Actions to AWS for teams with no platform engineer: OIDC sign-in with no access keys, staging on every push to `main`, production on a `v*` tag, one or more Regions with a sequential production rollout, a health check and alarm bake after each deploy, and rollback by re-running a previous tag. Deploys through Terraform or code-only into an existing ECS service or Lambda function. Detects existing workflows and roles first, and asks one Yes/No before writing to the repository or AWS | [SKILL.md](skills/deploy-from-github/SKILL.md) |
+| 15 | `observe-on-aws` | The smallest observability a startup needs: OpenTelemetry instrumentation to CloudWatch once, three alarms on the symptoms customers feel (error rate, p99 latency, saturation) paging through one composite alarm, one dashboard, log retention, and CloudWatch Omni on the same telemetry when the team wants it. Alarm names match the `deploy-from-github` bake. Grounds every threshold in the service's own data, detects what exists first, and asks one Yes/No before creating anything | [SKILL.md](skills/observe-on-aws/SKILL.md) |
 
 `contextual-offers-for-startups` is consulted by the other skills rather than invoked directly: it runs only after a recommendation, plan, or build is already final, and it never influences the technical advice.
 
@@ -70,7 +71,7 @@ For standalone skill installs — Kiro, fx, and other hosts that consume skills 
 npx skills add aws/agent-toolkit-for-aws/plugins/aws-startup-advisor/skills --skill '*'
 ```
 
-Install all 13 skills together rather than a subset: `agent-advisor` delegates to `gcp-to-aws`, and the migration skills share vendored fragments. A standalone install covers the skills only — it does not configure the `aws-mcp` server declared in `.mcp.json`, which the host needs separately.
+Install all 14 skills together rather than a subset: `agent-advisor` delegates to `gcp-to-aws`, and the migration skills share vendored fragments. A standalone install covers the skills only — it does not configure the `aws-mcp` server declared in `.mcp.json`, which the host needs separately.
 
 ## Development checks
 

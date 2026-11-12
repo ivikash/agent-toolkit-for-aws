@@ -135,8 +135,8 @@ what they lose: the first Region as a canary.
 2. **Alarms.** Watch every CloudWatch alarm named `<app>-<stage>-<region>-*` for the bake window
    (60 seconds in staging, 300 in production). Any alarm in `ALARM` fails the job. **No alarms with
    that prefix passes with a visible warning**: the deploy worked, but nothing was watching it. The
-   fix is to create alarms with that prefix. On an Omni-enabled account, note that Omni alerts are
-   not CloudWatch alarms and the bake does not read them. The bake needs at least one CloudWatch
+   fix is to create alarms with that prefix, which is what `observe-on-aws` does. On an Omni-enabled
+   account, note that Omni alerts are not CloudWatch alarms and the bake does not read them. The bake needs at least one CloudWatch
    alarm per stage and Region.
 
 The bake is what makes the sequential production rollout mean something. Without alarms it is a

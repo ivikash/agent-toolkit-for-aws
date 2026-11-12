@@ -250,4 +250,5 @@ their repository carries the rest.
 - **Not** for writing the application, its Dockerfile or its Terraform, use
   `start-building-for-startups` and `tf-best-practices`
 - **Not** for a production deploy that went wrong and needs a root cause, use `operate-on-aws`
+- **Not** for the alarms the bake reads, use `observe-on-aws`
 - **Not** for GitLab CI, Bitbucket Pipelines or self-hosted runners. Say so and stop.

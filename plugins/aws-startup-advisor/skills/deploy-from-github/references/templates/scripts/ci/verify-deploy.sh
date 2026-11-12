@@ -51,7 +51,7 @@ prefix="${APP_NAME}-${STAGE}-${REGION}-"
 names="$(aws cloudwatch describe-alarms --region "$REGION" --alarm-name-prefix "$prefix" \
   --query 'MetricAlarms[].AlarmName' --output text | tr '\t' '\n' | sed '/^$/d' || true)"
 if [[ -z "$names" ]]; then
-  echo "::warning::no CloudWatch alarms named ${prefix}* in ${REGION}; the bake has nothing to watch. Create alarms with that name prefix to make the bake meaningful."
+  echo "::warning::no CloudWatch alarms named ${prefix}* in ${REGION}; the bake has nothing to watch. observe-on-aws creates them."
   echo "- ${STAGE} ${REGION}: deployed, health ${url:-skipped}, no alarms to bake against" >> "$SUMMARY"
   exit 0
 fi

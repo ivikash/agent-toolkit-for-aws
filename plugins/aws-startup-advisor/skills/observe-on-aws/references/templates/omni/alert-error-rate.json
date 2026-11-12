@@ -1,0 +1,34 @@
+{
+  "spaceId": "{{SPACE_ID}}",
+  "profileId": "{{PROFILE_ID}}",
+  "name": "{{APP_NAME}}-{{STAGE}}-error-rate",
+  "description": "{{APP_NAME}} {{STAGE}}: share of requests ending in an error span over the last 5 minutes",
+  "rule": {
+    "telemetryRule": {
+      "query": {
+        "language": "PROMQL",
+        "expression": "sum(sum_over_time({__name__=\"traces.span.metrics.calls\", \"@resource.service.name\"=\"{{APP_NAME}}\", \"status.code\"=\"ERROR\"}[5m])) / sum(sum_over_time({__name__=\"traces.span.metrics.calls\", \"@resource.service.name\"=\"{{APP_NAME}}\"}[5m]))"
+      },
+      "condition": {
+        "thresholdMode": "FIELD_VALUE",
+        "comparator": "GT",
+        "criticalThreshold": {{ERROR_RATE_FRACTION}}
+      },
+      "evaluation": {
+        "intervalSeconds": 300,
+        "pendingDurationSeconds": 300
+      },
+      "noData": {
+        "treatAs": "OK"
+      }
+    }
+  },
+  "notificationsEnabled": true,
+  "notificationRules": [
+    {
+      "trigger": { "stateValues": ["CRITICAL"] },
+      "target": { "type": "sns", "arn": "{{SNS_TOPIC_ARN}}" }
+    }
+  ],
+  "tags": { "app": "{{APP_NAME}}", "stage": "{{STAGE}}", "managed-by": "observe-on-aws" }
+}

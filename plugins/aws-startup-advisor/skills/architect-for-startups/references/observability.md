@@ -44,6 +44,8 @@
 
 ## Minimum Viable Observability
 
+The `observe-on-aws` skill builds this checklist: OpenTelemetry instrumentation to CloudWatch, the three alarms with grounded thresholds, one dashboard, retention, and CloudWatch Omni on the same telemetry when the team wants it.
+
 ### Seed Stage Checklist
 
 - [ ] Structured JSON logging (enables Logs Insights queries)
