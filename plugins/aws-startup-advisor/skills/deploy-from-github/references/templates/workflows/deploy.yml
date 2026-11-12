@@ -1,0 +1,146 @@
+# Deploy. Two triggers, two stages, one artifact.
+#
+#   push to main      -> build once -> staging in every region in parallel
+#   push a v* tag     -> check the artifact for that commit already exists
+#                        (it was built when the commit reached staging)
+#                     -> production, one region at a time, first region bakes
+#                        before the next one starts
+#   workflow_dispatch -> re-run either stage for the ref you choose. Rollback is
+#                        `gh workflow run deploy.yml --ref v1.2.3 -f stage=production`.
+#
+# The production job carries `environment: production`. On a public repository, or
+# any plan with GitHub Enterprise, add required reviewers and the tag rule `v*` to
+# that environment and the deploy waits for a human. On a private repository on
+# Free, Pro or Team, GitHub cannot gate it, so the gate is the production IAM role:
+# its trust policy accepts only `environment:production:ref:refs/tags/v*`, and a
+# tag is created by a human. See references/pipeline-design.md, "The approval gate".
+#
+# Repository variables this file reads (scripts/ci/set-github-variables.sh sets them):
+#   APP_NAME, DEPLOY_TARGET, REGIONS, PRIMARY_REGION, ARTIFACT_BUCKET, ECR_REPOSITORY,
+#   AWS_ROLE_ARN_STAGING, AWS_ROLE_ARN_PRODUCTION,
+#   TF_STATE_BUCKET_STAGING, TF_STATE_BUCKET_PRODUCTION
+#
+# Every third-party action is pinned to a commit SHA. The trailing comment is the
+# tag that SHA was resolved from. Update both together.
+
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      stage:
+        description: Stage to deploy the chosen ref to
+        type: choice
+        options: [staging, production]
+        required: true
+
+permissions: {}
+
+jobs:
+  build:
+    name: Build and publish artifact
+    # Build only on the way to staging. A tag deploys the artifact its commit
+    # already produced, so production never runs a build.
+    if: github.ref == 'refs/heads/main' || (github.event_name == 'workflow_dispatch' && inputs.stage == 'staging')
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      id-token: write
+    environment: staging
+    concurrency:
+      group: build-${{ github.sha }}
+      cancel-in-progress: false
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Sign in to AWS (staging, the build account)
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN_STAGING }}
+          aws-region: ${{ vars.PRIMARY_REGION }}
+          role-session-name: gha-build-${{ github.run_id }}
+
+      - name: Build and publish
+        env:
+          APP_NAME: ${{ vars.APP_NAME }}
+          DEPLOY_TARGET: ${{ vars.DEPLOY_TARGET }}
+          REGIONS: ${{ vars.REGIONS }}
+          ECR_REPOSITORY: ${{ vars.ECR_REPOSITORY }}
+          ARTIFACT_BUCKET: ${{ vars.ARTIFACT_BUCKET }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: ./scripts/ci/build.sh publish
+
+  staging:
+    name: Staging ${{ matrix.region }}
+    needs: build
+    if: github.ref == 'refs/heads/main' || (github.event_name == 'workflow_dispatch' && inputs.stage == 'staging')
+    strategy:
+      fail-fast: false
+      matrix:
+        region: ${{ fromJSON(vars.REGIONS) }}
+    permissions:
+      contents: read
+      id-token: write
+    uses: ./.github/workflows/deploy-stage.yml
+    with:
+      stage: staging
+      region: ${{ matrix.region }}
+      role_arn: ${{ vars.AWS_ROLE_ARN_STAGING }}
+      tf_state_bucket: ${{ vars.TF_STATE_BUCKET_STAGING }}
+      artifact_ref: ${{ github.sha }}
+
+  check-artifact:
+    name: Artifact exists for this tag
+    if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.stage == 'production')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write
+    environment: production
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Sign in to AWS (production)
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN_PRODUCTION }}
+          aws-region: ${{ vars.PRIMARY_REGION }}
+          role-session-name: gha-check-${{ github.run_id }}
+
+      - name: Confirm the commit's artifact was built on its way through staging
+        env:
+          DEPLOY_TARGET: ${{ vars.DEPLOY_TARGET }}
+          ECR_REPOSITORY: ${{ vars.ECR_REPOSITORY }}
+          ARTIFACT_BUCKET: ${{ vars.ARTIFACT_BUCKET }}
+          APP_NAME: ${{ vars.APP_NAME }}
+          IMAGE_TAG: ${{ github.sha }}
+          REGION: ${{ vars.PRIMARY_REGION }}
+          WAIT_SECONDS: "0"
+        run: ./scripts/ci/wait-for-artifact.sh
+
+  production:
+    name: Production ${{ matrix.region }}
+    needs: check-artifact
+    strategy:
+      # One region at a time. A failed bake in the first region stops the rollout.
+      fail-fast: true
+      max-parallel: 1
+      matrix:
+        region: ${{ fromJSON(vars.REGIONS) }}
+    permissions:
+      contents: read
+      id-token: write
+    uses: ./.github/workflows/deploy-stage.yml
+    with:
+      stage: production
+      region: ${{ matrix.region }}
+      role_arn: ${{ vars.AWS_ROLE_ARN_PRODUCTION }}
+      tf_state_bucket: ${{ vars.TF_STATE_BUCKET_PRODUCTION }}
+      artifact_ref: ${{ github.sha }}

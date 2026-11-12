@@ -166,7 +166,7 @@ See [Well Architected](references/well-architected.md) and [Security Review](ref
 - **Multi-region before product-market fit**: You don't need 99.99% availability for a product nobody uses yet.
 - **Custom everything**: If AWS has a managed service for it, use it. Your engineers should write product code, not infrastructure code.
 - **Ignoring credits expiration**: Activate credits expire. Plan your spending to use them before they do.
-- **Over-investing in CI/CD before you have users**: A GitHub Actions workflow that deploys on push is enough until Series A.
+- **Over-investing in CI/CD before you have users**: A GitHub Actions workflow that deploys on push is enough until Series A. When they want that workflow built, hand off to `deploy-from-github`: OIDC sign-in, staging on push, production on a tag, a bake after each deploy.
 - **Copying enterprise architecture**: You are not Netflix. Their architecture solves problems you don't have.
 
 ## Output Format

@@ -1,0 +1,187 @@
+# Reusable: deploy one stage to one region, then bake.
+#
+# Called by deploy.yml once per (stage, region). Three deploy targets, chosen by the
+# DEPLOY_TARGET repository variable:
+#
+#   terraform - `terraform apply` is the deploy. Terraform owns the infrastructure
+#               and the running version; the artifact reference arrives as
+#               TF_VAR_image_tag (container) or TF_VAR_artifact_path (zip).
+#   ecs       - code-only deploy into an ECS service that already exists:
+#               render the task definition with the new image, register, update.
+#   lambda    - code-only deploy into a Lambda function that already exists.
+#
+# Conventions this file relies on (scripts/ci/set-github-variables.sh writes them,
+# references/pipeline-design.md explains them):
+#   cluster, service and function are named <APP_NAME>-<stage>
+#   the ECS container is named "app"; the task definition is deploy/ecs/<stage>.json
+#   alarms that gate the bake are named <APP_NAME>-<stage>-<region>-*
+#   HEALTH_URL_TEMPLATE has {stage} and {region} placeholders
+#
+# Every third-party action is pinned to a commit SHA. The trailing comment is the
+# tag that SHA was resolved from. Update both together.
+
+name: Deploy stage
+
+on:
+  workflow_call:
+    inputs:
+      stage:
+        description: staging or production
+        type: string
+        required: true
+      region:
+        description: AWS Region to deploy to
+        type: string
+        required: true
+      role_arn:
+        description: IAM role for this stage, assumed through OIDC
+        type: string
+        required: true
+      tf_state_bucket:
+        description: Terraform state bucket for this stage (terraform target only)
+        type: string
+        required: false
+        default: ""
+      artifact_ref:
+        description: Commit SHA the artifact was built from
+        type: string
+        required: true
+
+permissions: {}
+
+env:
+  TF_IN_AUTOMATION: "true"
+  TF_INPUT: "0"
+
+jobs:
+  deploy:
+    name: ${{ inputs.stage }} ${{ inputs.region }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      id-token: write
+    environment:
+      name: ${{ inputs.stage }}
+      url: ${{ steps.health.outputs.url }}
+    # One deploy per stage and region at a time. Never cancel a deploy in flight.
+    concurrency:
+      group: deploy-${{ inputs.stage }}-${{ inputs.region }}
+      cancel-in-progress: false
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Sign in to AWS
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: ${{ inputs.role_arn }}
+          aws-region: ${{ inputs.region }}
+          role-session-name: gha-deploy-${{ inputs.stage }}-${{ github.run_id }}
+
+      - name: Wait for the artifact to be available in this Region
+        id: artifact
+        env:
+          DEPLOY_TARGET: ${{ vars.DEPLOY_TARGET }}
+          APP_NAME: ${{ vars.APP_NAME }}
+          ECR_REPOSITORY: ${{ vars.ECR_REPOSITORY }}
+          ARTIFACT_BUCKET: ${{ vars.ARTIFACT_BUCKET }}
+          IMAGE_TAG: ${{ inputs.artifact_ref }}
+          REGION: ${{ inputs.region }}
+          WAIT_SECONDS: "600"
+        run: ./scripts/ci/wait-for-artifact.sh
+
+      # ---- terraform -------------------------------------------------------
+      - name: Set up Terraform
+        if: vars.DEPLOY_TARGET == 'terraform'
+        uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        with:
+          terraform_wrapper: false
+
+      - name: Terraform init
+        if: vars.DEPLOY_TARGET == 'terraform'
+        working-directory: ${{ vars.TF_DIR }}
+        env:
+          TF_STATE_BUCKET: ${{ inputs.tf_state_bucket }}
+          APP_NAME: ${{ vars.APP_NAME }}
+          STAGE: ${{ inputs.stage }}
+          REGION: ${{ inputs.region }}
+          PRIMARY_REGION: ${{ vars.PRIMARY_REGION }}
+        run: |
+          test -n "${TF_STATE_BUCKET}" || { echo "::error::tf_state_bucket input is empty"; exit 1; }
+          terraform init -no-color \
+            -backend-config="bucket=${TF_STATE_BUCKET}" \
+            -backend-config="key=${APP_NAME}/${STAGE}/${REGION}/terraform.tfstate" \
+            -backend-config="region=${PRIMARY_REGION}" \
+            -backend-config="use_lockfile=true" \
+            -backend-config="encrypt=true"
+
+      - name: Terraform plan and apply
+        if: vars.DEPLOY_TARGET == 'terraform'
+        id: apply
+        working-directory: ${{ vars.TF_DIR }}
+        env:
+          STAGE: ${{ inputs.stage }}
+          REGION: ${{ inputs.region }}
+          TF_VAR_region: ${{ inputs.region }}
+          TF_VAR_image_tag: ${{ inputs.artifact_ref }}
+          TF_VAR_image_uri: ${{ steps.artifact.outputs.image_uri }}
+          TF_VAR_artifact_path: ${{ steps.artifact.outputs.artifact_path }}
+        run: |
+          terraform plan -no-color -input=false \
+            -var-file="env/${STAGE}.tfvars" \
+            -out=tfplan
+          {
+            echo "## Apply: ${STAGE} ${REGION}"
+            echo '```'
+            terraform show -no-color tfplan
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          # Apply exactly the plan that was shown. No second plan, no drift between them.
+          terraform apply -no-color -input=false tfplan
+          # A root that outputs health_url hands the bake its URL (function URLs are
+          # not predictable from a template).
+          echo "health_url=$(terraform output -raw health_url 2>/dev/null || true)" >> "$GITHUB_OUTPUT"
+
+      # ---- ecs (code only) -------------------------------------------------
+      - name: Render task definition with the new image
+        if: vars.DEPLOY_TARGET == 'ecs'
+        id: render
+        uses: aws-actions/amazon-ecs-render-task-definition@8d79160660ad39c402a16e5fc7cd2a32e8f7d6b7 # v1.9.1
+        with:
+          task-definition: deploy/ecs/${{ inputs.stage }}.json
+          container-name: app
+          image: ${{ steps.artifact.outputs.image_uri }}
+
+      - name: Deploy to Amazon ECS and wait for the rollout
+        if: vars.DEPLOY_TARGET == 'ecs'
+        uses: aws-actions/amazon-ecs-deploy-task-definition@a00d4d57ac0de1a99b39fe469f3d898d38717c2b # v2.6.4
+        with:
+          task-definition: ${{ steps.render.outputs.task-definition }}
+          cluster: ${{ vars.APP_NAME }}-${{ inputs.stage }}
+          service: ${{ vars.APP_NAME }}-${{ inputs.stage }}
+          wait-for-service-stability: true
+          wait-for-minutes: 15
+
+      # ---- lambda (code only) ----------------------------------------------
+      - name: Deploy code to AWS Lambda
+        if: vars.DEPLOY_TARGET == 'lambda'
+        uses: aws-actions/aws-lambda-deploy@d496277188b89f0be02d7a2216fc912c0427702a # v1.1.2
+        with:
+          function-name: ${{ vars.APP_NAME }}-${{ inputs.stage }}
+          code-artifacts-dir: ${{ steps.artifact.outputs.artifact_dir }}
+          handler: ${{ vars.LAMBDA_HANDLER }}
+          runtime: ${{ vars.LAMBDA_RUNTIME }}
+          publish: true
+
+      # ---- bake ------------------------------------------------------------
+      - name: Health check, then watch the alarms for the bake window
+        id: health
+        env:
+          APP_NAME: ${{ vars.APP_NAME }}
+          STAGE: ${{ inputs.stage }}
+          REGION: ${{ inputs.region }}
+          HEALTH_URL: ${{ steps.apply.outputs.health_url }}
+          HEALTH_URL_TEMPLATE: ${{ vars.HEALTH_URL_TEMPLATE }}
+          BAKE_SECONDS: ${{ inputs.stage == 'production' && '300' || '60' }}
+        run: ./scripts/ci/verify-deploy.sh

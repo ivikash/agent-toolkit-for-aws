@@ -40,7 +40,7 @@ run = "uv run --no-project python scripts/model-id-lint.py"
 
 [tasks.test]
 description = "Run plugin contract tests"
-run = "uv run --no-project --python 3.12 --with pytest python -m pytest tests -q"
+run = "uv run --no-project --python 3.12 --with pytest --with pyyaml python -m pytest tests -q"
 
 [tasks."test:agent-advisor"]
 description = "Run agent-advisor engine tests (its own uv project, with jsonschema)"
